@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "boardgame-cli",
+    "boardgame-core",
+]

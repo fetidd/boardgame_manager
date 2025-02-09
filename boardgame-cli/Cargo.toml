@@ -1,0 +1,10 @@
+[package]
+edition = "2021"
+name = "boardgame-cli"
+version = "0.1.0"
+
+[dependencies]
+anyhow = "1.0.95"
+boardgame-core = { path = "../boardgame-core" }
+crossterm = "0.28.1"
+ratatui = "0.29.0"
