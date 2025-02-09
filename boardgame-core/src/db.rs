@@ -13,9 +13,11 @@ pub struct Boardgame {
     pub description: String,
 }
 
+#[derive(Debug)]
 pub struct BoardgameDb {
     conn: Connection,
 }
+
 
 impl BoardgameDb {
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, Error> {

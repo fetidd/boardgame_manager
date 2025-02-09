@@ -1,45 +1,88 @@
+use std::rc::Rc;
+
 use ratatui::{
     prelude::*,
     widgets::*,
 };
 
-use crate::App;
+use crate::{app::Mode, App};
 
 pub fn render(frame: &mut Frame, app: &mut App) {
+    match app.mode {
+        Mode::Main => render_main(frame, app),
+        Mode::Adding => render_adding(frame, app),
+        Mode::Quitting => render_quitting(frame, app),
+    }
+}
+
+fn render_quitting(frame: &mut Frame, app: &mut App) {
+    let constraints = [
+        Constraint::Length(3),
+        Constraint::Length(3),
+        Constraint::Length(3),
+        Constraint::Min(2),
+    ];
+    let chunks = create_chunks(frame, &constraints);
+    add_title("Are you sure you want to quit?", chunks[0], frame);
+    add_button("Yes", chunks[1], App::quit, frame, app);
+    add_button("No", chunks[2], App::go_to_previous_mode, frame, app);
+    add_messages(app, chunks[3], frame);
+
+}
+
+fn render_adding(frame: &mut Frame, app: &mut App) {
+    let chunks = create_chunks(frame, &[
+        Constraint::Length(3),  // Title
+        Constraint::Min(2),  // Messages
+    ]);
+    add_title("Add new boardgame...", chunks[0], frame);
+    add_messages(app, chunks[1], frame);
+}
+
+pub fn render_main(frame: &mut Frame, app: &mut App) {
     // Create the layout
-    let chunks = Layout::default()
+    let chunks = create_chunks(frame, &[
+        Constraint::Length(3),  // Title
+        Constraint::Length(3),  // Button
+        Constraint::Min(2),  // Messages
+    ]);
+    add_title("Boardgame Manager", chunks[0], frame);
+    add_button("Add Boardgame", chunks[1], App::go_to_add_new, frame, app);
+    add_messages(app, chunks[2], frame);
+}
+
+
+fn create_chunks(frame: &mut Frame, constraints: &[Constraint]) -> Rc<[Rect]> {
+    Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
-        .constraints([
-            Constraint::Length(3),  // Title
-            Constraint::Length(3),  // Button
-            Constraint::Min(0),     // Main content
-            Constraint::Length(3),  // Messages
-        ])
-        .split(frame.area());
+        .constraints(constraints)
+        .split(frame.area())
+}
 
-    // Render title
-    let title = Paragraph::new("Boardgame Manager")
+fn add_title(title: &str, area: Rect, frame: &mut Frame) {
+    let title = Paragraph::new(title)
         .alignment(Alignment::Center)
         .block(Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded));
-    frame.render_widget(title, chunks[0]);
+    frame.render_widget(title, area);
+}
 
-    // Store the button area in the app state
-    app.button_area = Some(chunks[1]);
-
-    // Render "Add New Boardgame" button
-    let button = Paragraph::new("[ Add New Boardgame (click or press 'a') ]")
+fn add_button(text: &str, area: Rect, func: fn(&mut App) -> (), frame: &mut Frame, app: &mut App) {
+    let button = Paragraph::new(text)
         .alignment(Alignment::Center)
         .block(Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded));
-    frame.render_widget(button, chunks[1]);
+    app.add_button(area, func);
+    frame.render_widget(button, area);
+}
 
-    // Render message area
+fn add_messages(app: &mut App, area: Rect, frame: &mut Frame) {
     let message_style = Style::default().fg(Color::Green);
-    let message_text = app.message.as_ref().map(|(msg, _)| msg.as_str()).unwrap_or("");
+    let messages = app.get_messages();
+    let message_text = messages.iter().map(|(msg, _)| msg.to_owned()).collect::<Vec<String>>().join("\n");
     let message = Paragraph::new(message_text)
         .style(message_style)
         .alignment(Alignment::Center)
@@ -47,12 +90,5 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .title("Messages"));
-    frame.render_widget(message, chunks[3]);
-
-    // Render main content
-    let content = Paragraph::new("Press 'q' to quit")
-        .block(Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded));
-    frame.render_widget(content, chunks[2]);
-} 
+        frame.render_widget(message, area);
+}
