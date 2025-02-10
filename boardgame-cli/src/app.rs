@@ -1,4 +1,8 @@
-use std::{collections::{HashMap, VecDeque}, io::{self, Stdout}, time::{Duration, Instant}};
+use std::{
+    collections::{HashMap, VecDeque},
+    io::{self, Stdout},
+    time::{Duration, Instant},
+};
 
 use boardgame_core::db::{Boardgame, BoardgameDb};
 use crossterm::event::{self, Event, KeyCode};
@@ -8,16 +12,16 @@ use crate::ui;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Mode {
-    Main, 
-    Adding, 
-    // Editing, 
-    // Deleting, 
-    Quitting
+    Main,
+    Adding,
+    // Editing,
+    // Deleting,
+    Quitting,
 }
 
 #[derive(Debug)]
 pub struct App {
-    pub mode: Mode,
+    pub modes: Vec<Mode>,
     pub state: AppState,
     pub buttons: HashMap<Rect, fn(&mut App) -> ()>,
     db: BoardgameDb,
@@ -29,7 +33,6 @@ pub struct AppState {
     pub should_quit: bool,
     pub messages: MessageQueue,
     message_timeout: Duration,
-    previous_mode: Option<Mode>,
 }
 
 type MessageQueue = VecDeque<(String, Instant)>;
@@ -40,30 +43,28 @@ impl App {
             should_quit: false,
             messages: VecDeque::new(),
             message_timeout: Duration::from_secs(3),
-            previous_mode: None,
-
         };
         App {
             state,
             buttons: HashMap::new(),
             db: BoardgameDb::new(db_path).expect("failed to create database"),
-            mode: Mode::Main,
-            debug: true
+            modes: Vec::from([Mode::Main]),
+            debug: true,
         }
     }
 
-    pub fn run(&mut self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), io::Error> {
-        loop {
-            // Draw UI
+    pub fn run(
+        &mut self,
+        terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    ) -> Result<(), io::Error> {
+        while !self.state.should_quit {
             terminal.draw(|frame| ui::render(frame, self))?;
-
-            // Check for message timeout
             self.check_message_timeout();
-
-            // Handle input
             if event::poll(std::time::Duration::from_millis(30))? {
                 match event::read()? {
-                    Event::Key(key) if key.kind == event::KeyEventKind::Press => self.on_key(key.code),
+                    Event::Key(key) if key.kind == event::KeyEventKind::Press => {
+                        self.on_key(key.code)
+                    }
                     Event::Mouse(event) => {
                         if event::MouseEventKind::Down(event::MouseButton::Left) == event.kind {
                             self.on_mouse_click(event.column, event.row);
@@ -72,34 +73,50 @@ impl App {
                     _ => {}
                 }
             }
-
-            if self.state.should_quit {
-                break;
-            }
         }
         Ok(())
     }
 
     pub fn switch_mode(&mut self, mode: Mode) {
-        self.state.previous_mode = Some(self.mode);
-        self.mode = mode;
+        self.modes.push(mode);
         self.buttons.clear();
+    }
+
+    pub fn prev_mode(&mut self) {
+        if self.modes.len() > 1 {
+            self.modes.pop();
+            self.buttons.clear();
+        }
+    }
+
+    pub fn get_prev_mode(&self) -> Option<Mode> {
+        if self.modes.len() > 1 {
+            Some(self.modes[self.modes.len() - 2])
+        } else {
+            None
+        }
+    }
+
+    pub fn get_curr_mode(&self) -> Option<Mode> {
+        self.modes.last().copied()
     }
 
     pub fn on_key(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('q') => self.switch_mode(Mode::Quitting),
             KeyCode::Char('a') => self.switch_mode(Mode::Adding),
+            KeyCode::Backspace => self.prev_mode(),
             KeyCode::Char('d') if self.debug => self.send_debug_message(),
-            key => {self.send_message(format!("Unhandled key: {:?}", key));}
-
+            key => {
+                self.send_message(format!("Unhandled key: {:?}", key));
+            }
         }
     }
 
     pub fn on_mouse_click(&mut self, x: u16, y: u16) {
         let mut func: Option<fn(&mut App) -> ()> = None;
         for (area, f) in &self.buttons {
-            if area.contains((x, y).into()){
+            if area.contains((x, y).into()) {
                 func = Some(*f);
                 break;
             }
@@ -134,9 +151,11 @@ impl App {
     }
 
     fn send_debug_message(&mut self) {
-        self.send_message(format!("previous_mode: {:?}", self.state.previous_mode));
+        self.send_message(format!(
+            "previous_mode: {:?}",
+            self.modes[self.modes.len() - 2]
+        ));
     }
-
 
     pub fn add_new_boardgame(&mut self) {
         match self.db.create(&Boardgame {
@@ -158,13 +177,6 @@ impl App {
 
     pub fn go_to_add_new(&mut self) {
         self.switch_mode(Mode::Adding);
-    }
-
-    pub fn go_to_previous_mode(&mut self) {
-        self.send_message(format!("Going back to {:?}", self.state.previous_mode));
-        if let Some(mode) = self.state.previous_mode {
-            self.switch_mode(mode);
-        }
     }
 
     pub fn quit(&mut self) {
