@@ -40,7 +40,7 @@ impl BoardgameDb {
     }
 
     // Create
-    pub fn create(&self, boardgame: &Boardgame) -> Result<i64, Error> {
+    pub fn create_boardgame(&self, boardgame: &Boardgame) -> Result<i64, Error> {
         self.conn.execute(
             "INSERT INTO boardgames (name, min_players, max_players, play_time_minutes, description)
              VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -57,7 +57,7 @@ impl BoardgameDb {
     }
 
     // Read
-    pub fn get_all(&self) -> Result<Vec<Boardgame>, Error> {
+    pub fn get_all_boardgames(&self) -> Result<Vec<Boardgame>, Error> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, min_players, max_players, play_time_minutes, description 
              FROM boardgames"
@@ -78,10 +78,7 @@ impl BoardgameDb {
         Ok(res?)
     }
 
-
-
-
-    pub fn get_by_id(&self, id: i64) -> Result<Option<Boardgame>, Error> {
+    pub fn get_boardgame_by_id(&self, id: i64) -> Result<Option<Boardgame>, Error> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, min_players, max_players, play_time_minutes, description 
              FROM boardgames WHERE id = ?"
@@ -106,7 +103,7 @@ impl BoardgameDb {
     }
 
     // Update
-    pub fn update(&self, boardgame: &Boardgame) -> Result<usize, Error> {
+    pub fn update_boardgame(&self, boardgame: &Boardgame) -> Result<usize, Error> {
         let id = boardgame.id.ok_or(rusqlite::Error::InvalidParameterName("Boardgame must have an id to update".into()))?;
 
         Ok(self.conn.execute(
@@ -125,7 +122,7 @@ impl BoardgameDb {
     }
 
     // Delete
-    pub fn delete(&self, id: i64) -> Result<usize, Error> {
+    pub fn delete_boardgame(&self, id: i64) -> Result<usize, Error> {
         Ok(self.conn.execute(
             "DELETE FROM boardgames WHERE id = ?",
             params![id],
@@ -155,24 +152,24 @@ mod tests {
             description: "Resource management and trading game".to_string(),
         };
 
-        let id = db.create(&game)?;
+        let id = db.create_boardgame(&game)?;
         assert!(id > 0);
 
         // Test Read
-        let retrieved = db.get_by_id(id)?.unwrap();
+        let retrieved = db.get_boardgame_by_id(id)?.unwrap();
         assert_eq!(retrieved.name, "Catan");
 
         // Test Update
         let mut updated_game = retrieved;
         updated_game.name = "Settlers of Catan".to_string();
-        db.update(&updated_game)?;
+        db.update_boardgame(&updated_game)?;
 
-        let retrieved_updated = db.get_by_id(id)?.unwrap();
+        let retrieved_updated = db.get_boardgame_by_id(id)?.unwrap();
         assert_eq!(retrieved_updated.name, "Settlers of Catan");
 
         // Test Delete
-        db.delete(id)?;
-        assert!(db.get_by_id(id)?.is_none());
+        db.delete_boardgame(id)?;
+        assert!(db.get_boardgame_by_id(id)?.is_none());
 
         Ok(())
     }

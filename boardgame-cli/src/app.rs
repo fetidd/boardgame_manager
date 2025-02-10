@@ -1,7 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
-    io::{self, Stdout},
-    time::{Duration, Instant},
+    cell::{Ref, RefCell}, collections::{HashMap, VecDeque}, io::{self, Stdout}, time::{Duration, Instant}
 };
 
 use boardgame_core::db::{Boardgame, BoardgameDb};
@@ -24,6 +22,8 @@ pub struct App {
     pub modes: Vec<Mode>,
     pub state: AppState,
     pub buttons: HashMap<Rect, fn(&mut App) -> ()>,
+    pub messages: RefCell<MessageQueue>,
+    config: AppConfig,
     db: BoardgameDb,
     debug: bool,
 }
@@ -31,7 +31,10 @@ pub struct App {
 #[derive(Debug)]
 pub struct AppState {
     pub should_quit: bool,
-    pub messages: MessageQueue,
+}
+
+#[derive(Debug)]
+struct AppConfig {
     message_timeout: Duration,
 }
 
@@ -41,15 +44,18 @@ impl App {
     pub fn new(db_path: &str) -> App {
         let state = AppState {
             should_quit: false,
-            messages: VecDeque::new(),
+        };
+        let config = AppConfig {
             message_timeout: Duration::from_secs(3),
         };
         App {
             state,
+            config,
             buttons: HashMap::new(),
             db: BoardgameDb::new(db_path).expect("failed to create database"),
             modes: Vec::from([Mode::Main]),
             debug: true,
+            messages: RefCell::new(VecDeque::new()),
         }
     }
 
@@ -130,21 +136,21 @@ impl App {
         self.buttons.insert(area, func);
     }
 
-    fn send_message(&mut self, msg: String) {
-        self.state.messages.push_back((msg, Instant::now()));
+    fn send_message(&self, msg: String) {
+        self.messages.borrow_mut().push_back((msg, Instant::now()));
     }
 
-    pub fn get_messages(&self) -> &MessageQueue {
-        &self.state.messages
+    pub fn get_messages(&self) -> Ref<MessageQueue> {
+        self.messages.borrow()
     }
 
-    fn clear_message(&mut self) {
-        self.state.messages.pop_front();
+    fn clear_message(&self) {
+        self.messages.borrow_mut().pop_front();
     }
 
     pub fn check_message_timeout(&mut self) {
-        if let Some((_, timestamp)) = &self.state.messages.front() {
-            if timestamp.elapsed() >= self.state.message_timeout {
+        if let Some((_, timestamp)) = &self.messages.borrow().front() {
+            if timestamp.elapsed() >= self.config.message_timeout {
                 self.clear_message();
             }
         }
@@ -157,8 +163,8 @@ impl App {
         ));
     }
 
-    pub fn add_new_boardgame(&mut self) {
-        match self.db.create(&Boardgame {
+    pub fn add_new_boardgame(&self) {
+        match self.db.create_boardgame(&Boardgame {
             id: None,
             name: "New Boardgame".to_string(),
             min_players: 1,
@@ -175,11 +181,26 @@ impl App {
         self.switch_mode(Mode::Main);
     }
 
+    pub fn go_to_quit(&mut self) {
+        self.switch_mode(Mode::Quitting);
+    }
+
     pub fn go_to_add_new(&mut self) {
         self.switch_mode(Mode::Adding);
     }
 
     pub fn quit(&mut self) {
         self.state.should_quit = true;
+    }
+
+    pub fn get_boardgames(&self) -> Vec<Boardgame> {
+        let result = self.db.get_all_boardgames();
+        match result {
+            Ok(boardgames) => boardgames,
+            Err(e) => {
+                self.send_message(format!("Error getting boardgames: {}", e));
+                Vec::new()
+            }
+        }
     }
 }
