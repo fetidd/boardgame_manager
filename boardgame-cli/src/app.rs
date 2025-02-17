@@ -1,10 +1,17 @@
 use std::{
-    cell::{Ref, RefCell}, collections::{HashMap, VecDeque}, io::{self, Stdout}, time::{Duration, Instant}
+    cell::{Ref, RefCell},
+    collections::{HashMap, VecDeque},
+    io::{self, Stdout},
+    time::{Duration, Instant},
 };
 
 use boardgame_core::db::{Boardgame, BoardgameDb};
 use crossterm::event::{self, Event, KeyCode};
-use ratatui::{layout::Rect, prelude::CrosstermBackend, Terminal};
+use ratatui::{
+    layout::{Position, Rect},
+    prelude::CrosstermBackend,
+    Terminal,
+};
 
 use crate::ui;
 
@@ -23,6 +30,7 @@ pub struct App {
     pub state: AppState,
     pub buttons: HashMap<Rect, fn(&mut App) -> ()>,
     pub messages: RefCell<MessageQueue>,
+    pub cursor: Option<Position>,
     config: AppConfig,
     db: BoardgameDb,
     debug: bool,
@@ -31,6 +39,9 @@ pub struct App {
 #[derive(Debug)]
 pub struct AppState {
     pub should_quit: bool,
+    pub inputs: HashMap<Rect, String>,
+    pub input_state: HashMap<String, String>,
+    pub selected_input: Option<String>,
 }
 
 #[derive(Debug)]
@@ -44,6 +55,9 @@ impl App {
     pub fn new(db_path: &str) -> App {
         let state = AppState {
             should_quit: false,
+            inputs: HashMap::new(),
+            input_state: HashMap::new(),
+            selected_input: None,
         };
         let config = AppConfig {
             message_timeout: Duration::from_secs(3),
@@ -56,6 +70,7 @@ impl App {
             modes: Vec::from([Mode::Main]),
             debug: true,
             messages: RefCell::new(VecDeque::new()),
+            cursor: None,
         }
     }
 
@@ -74,6 +89,8 @@ impl App {
                     Event::Mouse(event) => {
                         if event::MouseEventKind::Down(event::MouseButton::Left) == event.kind {
                             self.on_mouse_click(event.column, event.row);
+                        } else if event.kind == event::MouseEventKind::Moved {
+                            self.update_cursor((event.column, event.row));
                         }
                     }
                     _ => {}
@@ -83,15 +100,22 @@ impl App {
         Ok(())
     }
 
+    fn clear_state(&mut self) {
+        self.buttons.clear();
+        self.state.inputs.clear();
+        self.state.input_state.clear();
+        self.state.selected_input = None;
+    }
+
     pub fn switch_mode(&mut self, mode: Mode) {
         self.modes.push(mode);
-        self.buttons.clear();
+        self.clear_state();
     }
 
     pub fn prev_mode(&mut self) {
         if self.modes.len() > 1 {
             self.modes.pop();
-            self.buttons.clear();
+            self.clear_state();
         }
     }
 
@@ -108,18 +132,36 @@ impl App {
     }
 
     pub fn on_key(&mut self, key: KeyCode) {
-        match key {
-            KeyCode::Char('q') => self.switch_mode(Mode::Quitting),
-            KeyCode::Char('a') => self.switch_mode(Mode::Adding),
-            KeyCode::Backspace => self.prev_mode(),
-            KeyCode::Char('d') if self.debug => self.send_debug_message(),
-            key => {
-                self.send_message(format!("Unhandled key: {:?}", key));
+        if let Some(input) = &self.state.selected_input {
+            self.state
+                .input_state
+                .entry(input.clone())
+                .and_modify(|v| v.push_str(&key.to_string()));
+        } else {
+            match key {
+                KeyCode::Char('q') => self.go_to_quit(),
+                KeyCode::Backspace => self.prev_mode(),
+                KeyCode::Char('d') if self.debug => self.send_debug_message(),
+                key => {
+                    self.send_message(format!("Unhandled key: {:?}", key));
+                }
             }
         }
     }
 
     pub fn on_mouse_click(&mut self, x: u16, y: u16) {
+        let mut key = None;
+        for (area, k) in &self.state.inputs {
+            if area.contains((x, y).into()) {
+                key = Some(k);
+            }
+        }
+        if let Some(key) = key {
+            self.state.selected_input = Some(key.to_owned());
+            return;
+        } else {
+            self.state.selected_input = None;
+        }
         let mut func: Option<fn(&mut App) -> ()> = None;
         for (area, f) in &self.buttons {
             if area.contains((x, y).into()) {
@@ -136,6 +178,10 @@ impl App {
         self.buttons.insert(area, func);
     }
 
+    pub fn add_input(&mut self, area: Rect, key: &str) {
+        self.state.inputs.insert(area, key.to_string());
+    }
+
     fn send_message(&self, msg: String) {
         self.messages.borrow_mut().push_back((msg, Instant::now()));
     }
@@ -149,18 +195,25 @@ impl App {
     }
 
     pub fn check_message_timeout(&mut self) {
+        let mut should_clear = false;
         if let Some((_, timestamp)) = &self.messages.borrow().front() {
             if timestamp.elapsed() >= self.config.message_timeout {
-                self.clear_message();
+                should_clear = true;
             }
+        }
+        if should_clear {
+            self.clear_message();
         }
     }
 
+    fn update_cursor(&mut self, (x, y): (u16, u16)) {
+        self.cursor = Some(Position::new(x, y))
+    }
+
     fn send_debug_message(&mut self) {
-        self.send_message(format!(
-            "previous_mode: {:?}",
-            self.modes[self.modes.len() - 2]
-        ));
+        self.send_message(format!("previous_mode: {:?}", self.get_prev_mode()));
+        self.send_message(format!("{:?}", self.state.input_state));
+        self.send_message(format!("{:?}", self.state.inputs));
     }
 
     pub fn add_new_boardgame(&self) {
@@ -175,10 +228,6 @@ impl App {
             Ok(_) => self.send_message("Successfully added new boardgame!".to_string()),
             Err(e) => self.send_message(format!("Error adding boardgame: {}", e)),
         }
-    }
-
-    pub fn go_to_main(&mut self) {
-        self.switch_mode(Mode::Main);
     }
 
     pub fn go_to_quit(&mut self) {
