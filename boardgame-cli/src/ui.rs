@@ -92,6 +92,7 @@ fn render_adding(frame: &mut Frame, app: &mut App) {
         app.add_input(row[0], name);
         frame.render_widget(input, row[0]);
     }
+    add_button(Button::new("Add").green(), vertical_layout[vertical_layout.len() - 2], App::add_new_boardgame, frame, app);
     add_messages(app, *vertical_layout.last().expect("no constraint"), frame);
 }
 

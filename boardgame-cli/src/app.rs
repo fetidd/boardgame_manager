@@ -133,10 +133,17 @@ impl App {
 
     pub fn on_key(&mut self, key: KeyCode) {
         if let Some(input) = &self.state.selected_input {
-            self.state
-                .input_state
-                .entry(input.clone())
-                .and_modify(|v| v.push_str(&key.to_string()));
+            if !self.state.input_state.contains_key(input) {
+                self.state.input_state.insert(input.clone(), String::new());
+            }
+            let mut input_state = self.state.input_state.get_mut(input).expect("how is this not present?");
+            match key {
+                KeyCode::Enter => self.state.selected_input = None,
+                KeyCode::Tab => {},
+                KeyCode::Backspace => input_state.pop().map_or((), |_| ()),
+                KeyCode::Char(ch) => input_state.push(ch),
+                key => self.send_message(format!("Unhandled key: {:?}", key))
+            }
         } else {
             match key {
                 KeyCode::Char('q') => self.go_to_quit(),
@@ -212,8 +219,8 @@ impl App {
 
     fn send_debug_message(&mut self) {
         self.send_message(format!("previous_mode: {:?}", self.get_prev_mode()));
-        self.send_message(format!("{:?}", self.state.input_state));
-        self.send_message(format!("{:?}", self.state.inputs));
+        self.send_message(format!("input state: {:?}", self.state.input_state));
+        self.send_message(format!("inputs: {:?}", self.state.inputs));
     }
 
     pub fn add_new_boardgame(&self) {
