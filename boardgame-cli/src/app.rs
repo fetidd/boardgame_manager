@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use boardgame_core::db::{Boardgame, BoardgameDb};
+use boardgame_core::{db::{Boardgame, BoardgameDb}, strings::*};
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::{
     layout::{Position, Rect},
@@ -187,6 +187,7 @@ impl App {
 
     pub fn add_input(&mut self, area: Rect, key: &str) {
         self.state.inputs.insert(area, key.to_string());
+        // self.state.input_state.insert(key.to_string(), String::new());
     }
 
     fn send_message(&self, msg: String) {
@@ -223,16 +224,31 @@ impl App {
         self.send_message(format!("inputs: {:?}", self.state.inputs));
     }
 
-    pub fn add_new_boardgame(&self) {
+    pub fn add_new_boardgame(&mut self) {
+        let name = self.state.input_state.get(BG_NAME).expect(&format!("'{}' not in input_state", BG_NAME)).to_owned();
+        let description = self.state.input_state.get(BG_DESCRIPTION).expect(&format!("'{}' not in input_state", BG_DESCRIPTION)).to_owned();
+        let mut numbers = [0, 0, 0];
+        for (field, pos) in [(BG_MIN_PLAYERS, 0), (BG_MAX_PLAYERS, 1), (BG_PLAY_TIME, 2)] {
+            match self.state.input_state.get(field).expect(&format!("'{}' not in input_state", field)).parse::<i32>() {
+                Err(e) => {
+                    self.send_message(format!("Bad value for '{}': {}", field, e));
+                    return;
+                },
+                Ok(v) => numbers[pos] = v
+            }
+        }
         match self.db.create_boardgame(&Boardgame {
             id: None,
-            name: "New Boardgame".to_string(),
-            min_players: 1,
-            max_players: 4,
-            play_time_minutes: 30,
-            description: "New Boardgame Description".to_string(),
+            name,
+            min_players: numbers[0],
+            max_players: numbers[1],
+            play_time_minutes: numbers[2],
+            description
         }) {
-            Ok(_) => self.send_message("Successfully added new boardgame!".to_string()),
+            Ok(_) => {
+                self.switch_mode(Mode::Main);
+                self.send_message("Successfully added new boardgame!".to_string())
+            },
             Err(e) => self.send_message(format!("Error adding boardgame: {}", e)),
         }
     }

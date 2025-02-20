@@ -1,7 +1,6 @@
 use std::rc::Rc;
-
 use ratatui::{prelude::*, widgets::*};
-
+use boardgame_core::strings::BG_FIELDS;
 use crate::{app::Mode, widgets::button::Button, App};
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -74,7 +73,7 @@ fn render_adding(frame: &mut Frame, app: &mut App) {
         app,
         false,
     );
-    for (i, name) in ["Name", "Min players", "Max players"]
+    for (i, name) in BG_FIELDS
         .into_iter()
         .enumerate()
     {
@@ -83,16 +82,21 @@ fn render_adding(frame: &mut Frame, app: &mut App) {
             .constraints([Constraint::Fill(1)])
             .split(vertical_layout[i + 1]);
         let text = app.state.input_state.get(name).cloned().unwrap_or_default();
-        let input = Paragraph::new(text).block(
+        let mut input = Paragraph::new(text).block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .title(name),
         );
+        if let Some(selected) = &app.state.selected_input {
+            if selected == name {
+                input = input.style(Style::default().fg(Color::Magenta));
+            }
+        }
         app.add_input(row[0], name);
         frame.render_widget(input, row[0]);
     }
-    add_button(Button::new("Add").green(), vertical_layout[vertical_layout.len() - 2], App::add_new_boardgame, frame, app);
+    add_button(Button::new("Add").green(), vertical_layout[vertical_layout.len() - 3], App::add_new_boardgame, frame, app);
     add_messages(app, *vertical_layout.last().expect("no constraint"), frame);
 }
 
@@ -119,7 +123,7 @@ pub fn render_main(frame: &mut Frame, app: &mut App) {
     let boardgame_list = List::new(
         boardgames
             .iter()
-            .map(|b| ListItem::new(format!("{} - {}", b.name, b.min_players))),
+            .map(|b| ListItem::new(b.name.to_string())),
     )
     .block(
         Block::default()
